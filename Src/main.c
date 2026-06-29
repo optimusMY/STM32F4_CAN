@@ -22,7 +22,7 @@ can_tx_header_typedef can1_tx_header;
 
 volatile uint8_t count;
 
-
+/*
 void CAN1_RX0_IRQHandler(void)
 {
 	if((CAN1->RF0R & CAN_RF0R_FMP0) != 0U)
@@ -31,6 +31,7 @@ void CAN1_RX0_IRQHandler(void)
 		count++;
 	}
 }
+*/
 
 void CAN1_RX1_IRQHandler(void)
 {
@@ -66,7 +67,7 @@ int main()
 {
 
 	can_filter_config_t filcfg ={
-			.filterbank_fifo = CAN_FIFO_0,
+			.filterbank_fifo = CAN_FIFO_1,
 			.filterbank_mask_or_list_mode = CAN_FILTER_MODE_MASK,
 			.filterbank_scaling = CAN_FILTER_SCALING_SINGLE32BIT,
 			.filterbank_number = 15,
@@ -105,7 +106,7 @@ int main()
 		errflag=1;
 	}*/
 	can_filter_config(CAN1, &filcfg);
-	can_start(CAN1, CAN_FIFO_0);// Eger sadece belirli bir FIFO kesmesini acacaksan: can_fifo_interrupt_enable(CAN_FIFO_0); seklinde func yaz
+	can_start(CAN1, CAN_FIFO_1);// Eger sadece belirli bir FIFO kesmesini acacaksan: can_fifo_interrupt_enable(CAN_FIFO_0); seklinde func yaz
 
 
 	while(1)

@@ -21,43 +21,44 @@
 
 
 // function for designating GPIO pins for CAN BUS
-void can_gpio_init(void)
+void can_gpio_init(CAN_TypeDef *CANx)
 {
-	/*Enable clock access to gpiob*/
-	SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN); 		//RCC->AHB1ENR |= GPIOBEN;
+    if(CANx == CAN1)
+    {
+        /* Enable GPIO Clock (Örn: GPIOB) */
+        SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN);
 
-	/*Set PB8 and PB9 to alternate function mode*/
-	/*
-	 Bits 2y:2y+1 MODERy[1:0]: Port x configuration bits (y = 0..15)
-		These bits are written by software to configure the I/O direction mode.
-		00: Input (reset state)
-		01: General purpose output mode
-		10: Alternate function mode
-		11: Analog mode
+        /* CAN1 Pins Configuration (Örn: PB8 -> RX, PB9 -> TX) */
+        // Moder ayarları (Alternate Function - 0x2)
+        WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER8_Msk, GPIO_MODER_MODER8_Pos, GPIO_MODER_MODESEL_ALTFUNC);
+        WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER9_Msk, GPIO_MODER_MODER9_Pos, GPIO_MODER_MODESEL_ALTFUNC);
 
-		so PB8-> bit16:17 -> 0b10: Alternate function mode
-		   PB9-> bit18:19 -> 0b10: Alternate function mode
-	 */
-	//GPIOB->MODER &=~BIT_MASK(16); //clear MODER_BIT16
-	//GPIOB->MODER |=BIT_MASK(17); //set MODER_BIT17
-	//GPIO_MODER_MODER8_Pos --> MODER8 Position in GPIO_MODER Register
-	//GPIO_MODER_MODER8_Msk --> A value that corresponding MODER8 bits are 1 and remained are 0  in GPIO_MODER Register
-	//GPIO_MODER_MODESEL_ALTFUNC---> Value to select the GPIO as ALTFUNCTION
-	WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER8_Msk, GPIO_MODER_MODER8_Pos, GPIO_MODER_MODESEL_ALTFUNC); //PB8-> bit16:17 -> 0b10: Alternate function mode
-	//GPIOB->MODER &=~BIT_MASK(18);
-	//GPIOB->MODER |=BIT_MASK(19);
-	WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER9_Msk, GPIO_MODER_MODER9_Pos, GPIO_MODER_MODESEL_ALTFUNC); //PB9-> bit18:19 -> 0b10: Alternate function mode
+        // AFR (Alternate Function Register - AF9)
+        WRITE_REG_PORTION(GPIOB->AFR[1], GPIO_AFRH_AFSEL8_Msk, GPIO_AFRH_AFSEL8_Pos, GPIO_AFR_AFSEL_AF9);
+        WRITE_REG_PORTION(GPIOB->AFR[1], GPIO_AFRH_AFSEL9_Msk, GPIO_AFRH_AFSEL9_Pos, GPIO_AFR_AFSEL_AF9);
+    }
+    else if(CANx == CAN2)
+    {
+        /* Enable GPIO Clock (Örn: CAN2 genelde PB5/PB6 veya PB12/PB13 kullanır) */
+        SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN);
 
+        /* CAN2 Pins Configuration (Örn: PB12 -> RX, PB13 -> TX) */
+        WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER12_Msk, GPIO_MODER_MODER12_Pos, GPIO_MODER_MODESEL_ALTFUNC);
+        WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER13_Msk, GPIO_MODER_MODER13_Pos, GPIO_MODER_MODESEL_ALTFUNC);
 
-	/*Set PB8 and PB9 alternate function to CAN1 RX and TX*/
-	// PB8 -> CAN1_RX -> AF9 -----> AFRH.AFRH8[3:0] = AFR[1].AFRH8[3:0] = 0b1001: AF9
-	WRITE_REG_PORTION(GPIOB->AFR[1],GPIO_AFRH_AFSEL8_Msk,GPIO_AFRH_AFSEL8_Pos, GPIO_AFR_AFSEL_AF9);		//GPIOB->AFR[1] |=(0x09 << 0);
+        // AF9 Ayarı
+        WRITE_REG_PORTION(GPIOB->AFR[1], GPIO_AFRH_AFSEL12_Msk, GPIO_AFRH_AFSEL12_Pos, GPIO_AFR_AFSEL_AF9);
+        WRITE_REG_PORTION(GPIOB->AFR[1], GPIO_AFRH_AFSEL13_Msk, GPIO_AFRH_AFSEL13_Pos, GPIO_AFR_AFSEL_AF9);
 
-	// PB9 -> CAN1_TX -> AF9 -----> AFRH.AFRH9[3:0] = AFR[1].AFRH9[3:0] = 0b1001: AF9
-	WRITE_REG_PORTION(GPIOB->AFR[1],GPIO_AFRH_AFSEL9_Msk,GPIO_AFRH_AFSEL9_Pos, GPIO_AFR_AFSEL_AF9);		//GPIOB->AFR[1] |=(0x09 << 4);
+        /* KRİTİK ADIM: CAN2_RX (PB5) pinine dahili PULL-UP direnci atama */
+        //TEST için CAN2 pinleri ardışık 2 resesif bit görüp INAQ biti takılmasın diye pullup yapıldı
+        // PUPDR register ayarı: 00 -> No Pull, 01 -> Pull-up, 10 -> Pull-down
 
-
+        WRITE_REG_PORTION(GPIOB->PUPDR, GPIO_PUPDR_PUPD12_Msk, GPIO_PUPDR_PUPD12_Pos, 0x1UL); //TODO  bu satır test bitince silinecek
+    }
 }
+
+
 
 
 
@@ -200,7 +201,7 @@ void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo) //(can_fifo_sel)
 	//CANx->MCR &=~ CAN_MCR_INRQ;
 	CLEAR_BIT(CANx->MCR, CAN_MCR_INRQ);
 
-	/*Wait until CAN1 is out of initialization mode*/
+	/*Wait until CANx is out of initialization mode*/
 	while((CANx->MSR & CAN_MSR_INAK) == 1){}//be sure that CAN1 is quit from init mode
 
 	if(CAN_FIFO_0 == selected_fifo)

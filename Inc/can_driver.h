@@ -213,7 +213,7 @@ typedef struct {
 
 
 
-void can_gpio_init(void);
+void can_gpio_init(CAN_TypeDef *CANx);
 void can_params_init(CAN_TypeDef *CANx, can_trans_mode_sel mode, uint16_t baudrate);//(can_trans_mode_sel, can_baudrate_t)
 bool can_get_standard_timing(uint32_t pclk1_hz, can_baudrate_t baudrate, can_bit_timing_t *timing);
 void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo); //(can_fifo_sel)

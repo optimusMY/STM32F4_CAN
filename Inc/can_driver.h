@@ -67,7 +67,7 @@ typedef struct
 //#define CAN_RX_FIFO0	0x00
 //#define CAN_RX_FIFO1	0x01
 
-#define CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1	20
+#define CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1	20    //must be max 27 because  28 filterbank registers 0->27
 
 /*
 Baud Rate (Data Rate),Maximum Safe Cable Length,Common Application Areas
@@ -217,9 +217,9 @@ void can_gpio_init(void);
 void can_params_init(CAN_TypeDef *CANx, can_trans_mode_sel mode, uint16_t baudrate);//(can_trans_mode_sel, can_baudrate_t)
 bool can_get_standard_timing(uint32_t pclk1_hz, can_baudrate_t baudrate, can_bit_timing_t *timing);
 void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo); //(can_fifo_sel)
-uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint32_t *pTxMailbox);
-uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, uint8_t aData[]);
-int can_filter_config(can_filter_config_t* filtercfg);
+uint8_t can_add_tx_message(CAN_TypeDef *CANx, can_tx_header_typedef *pHeader, uint8_t aData[], uint32_t *pTxMailbox);
+uint8_t can_get_rx_message(CAN_TypeDef *CANx, can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, uint8_t aData[]);
+int can_filter_config(CAN_TypeDef *CANx, can_filter_config_t* filtercfg);
 
 
 #endif

@@ -153,6 +153,40 @@ void can_params_init(CAN_TypeDef *CANx, can_trans_mode_sel mode, uint16_t baudra
 		//CAN1->BTR &=~(1U<<30);
 		CLEAR_BIT(CANx->BTR, CAN_BTR_LBKM);	//Clear LoopBackMode bit on CAN1->BTR Register
 	}
+
+
+	/*assign Filterbank border between CAN1 and CAN2 code moved here from can_filter_config
+	 * because we dont want to write this value in	every single filterbank config
+	 * !!! Filter config always managed by CAN1 registers!!! so instead of CANx, CAN1 is written deliberately !!!*/
+	/*Enter Filter init mode (Unlock Filter init) *********************************************************************/
+	SET_BIT(CAN1->FMR, CAN_FMR_FINIT);
+
+	/*Set the slave filter to start from 20*/
+	//CAN1->FMR &=~(CAN_FMR_CAN2SB_Msk);
+	//CAN1->FMR |=(20 << CAN_FMR_CAN2SB_Pos);
+	/*
+	 The default value of the CANSB bits is 14 at reset.
+	 So the filter banks are split evenly: 14 filters are assigned to CAN1 (0-13) and 14 filters are assigned to CAN2 (14-27).
+
+	 CAN1->FMR[13:8] bits are CANSB[5:0]: CAN start bank
+		These bits are set and cleared by software. When both CAN are used, they define the start bank of each CAN interface:
+		000001 = 1 filter assigned to CAN1 and 27 assigned to CAN2
+		...
+		011011 = 27 filters assigned to CAN1 and 1 filter assigned to CAN2
+
+		example:
+		 CANSB[5:0]= 20 means that 20 filters are assigned to CAN1 and 8 filters assigned to CAN2.
+		 [CAN_F0R1,CAN_F0R2] to [CAN_F19R1,CAN_F19R2]    assigned to CAN1
+		 [CAN_F20R1,CAN_F20R2] to [CAN_F27R1,CAN_F27R2]    assigned to CAN2
+	*/
+	/*assign Filterbank border between CAN1 and CAN2 */
+	if(CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1 < 27)
+	{
+		WRITE_REG_PORTION(CAN1->FMR, CAN_FMR_CAN2SB_Msk, CAN_FMR_CAN2SB_Pos, CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1);
+	}
+
+	/* 3. Quit Filter init Mode (Lock again) **************************************************************************/
+	CLEAR_BIT(CAN1->FMR, CAN_FMR_FINIT);
 }
 
 
@@ -174,19 +208,26 @@ void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo) //(can_fifo_sel)
 		/*Enable interrupt for FIFO0 message pending*/
 		//CANx->IER |= (1U<<1);
 		SET_BIT(CANx->IER, CAN_IER_FMPIE0);
+
+		/*Enable CAN RX0 interrupt for message reception*/
+		if(CANx == CAN1)
+			NVIC_EnableIRQ(CAN1_RX0_IRQn);
+		else if (CANx == CAN2)
+			NVIC_EnableIRQ(CAN2_RX0_IRQn);
+
 	}
-	else
+	else //CAN_FIFO_1
 	{
 		/*Enable interrupt for FIFO1 message pending*/
 		//CANx->IER |= (1U<<4);
 		SET_BIT(CANx->IER, CAN_IER_FMPIE1);
-	}
 
-	/*Enable CAN RX0 interrupt for message reception*/
-	if(CANx == CAN1)
-		NVIC_EnableIRQ(CAN1_RX0_IRQn);
-	else if (CANx == CAN2)
-		NVIC_EnableIRQ(CAN2_RX0_IRQn);
+		/*Enable CAN RX1 interrupt for message reception*/
+		if(CANx == CAN1)
+			NVIC_EnableIRQ(CAN1_RX1_IRQn);
+		else if (CANx == CAN2)
+			NVIC_EnableIRQ(CAN2_RX1_IRQn);
+	}
 
 }
 
@@ -201,7 +242,7 @@ void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo) //(can_fifo_sel)
   *         This parameter can be a value of @arg CAN_Tx_Mailboxes.
   * @retval  status
   */
-uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint32_t *pTxMailbox)
+uint8_t can_add_tx_message(CAN_TypeDef *CANx, can_tx_header_typedef *pHeader, uint8_t aData[], uint32_t *pTxMailbox)
 {
 	/* TX MailBox structure
 	 * there are 3 tx_mailboxes (x -> 0:2)
@@ -215,7 +256,7 @@ uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint
 	uint32_t transmitmailbox;
 
 	// Read the Transmit Status Register
-	uint32_t tsr = READ_REG(CAN1->TSR);
+	uint32_t tsr = READ_REG(CANx->TSR);
 
 	// Check that at least one Tx mailbox is empty
     if (((tsr & CAN_TSR_TME0) != 0U) ||
@@ -236,7 +277,7 @@ uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint
 
 
       //CAN_TI0R register bit map for std_id: (MSB)  STDID[31:21], rsv[zeros], IDE_BIT,RTR_BIT,TXRQ_BIT (LSB)  -->total 32bit
-      //CAN_TI0R register bit map for std_id: (MSB)  EXTID[31:3], IDE_BIT,RTR_BIT,TXRQ_BIT (LSB)  -->total 32bit
+      //CAN_TI0R register bit map for ext_id: (MSB)  EXTID[31:3], IDE_BIT,RTR_BIT,TXRQ_BIT (LSB)  -->total 32bit
       /* Set up the Id */
       uint32_t tmpreg = 0;
       tmpreg |= ((pHeader->ide & 0x1UL) << CAN_TI0R_IDE_Pos); // put ide bit
@@ -248,17 +289,17 @@ uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint
       else //CAN_ID_STD
       { tmpreg |= ((pHeader->id & 0x7FFUL) << CAN_TI0R_STID_Pos); }//put std_id
 
-      CAN1->sTxMailBox[transmitmailbox].TIR = tmpreg; //put tmp register to real Transmit register
+      CANx->sTxMailBox[transmitmailbox].TIR = tmpreg; //put tmp register to real Transmit register
 
 
       //CAN_TDT0R register bit map : TIME[31:16],rsv[15:9], TGT_BIT, rsv[7:4],DLC[3:0] -->total 32bit
       /* Set up the DLC */
-      CAN1->sTxMailBox[transmitmailbox].TDTR = (pHeader->dlc & 0x0000000FUL); //first 4 bit LSB of TDTR --> DLC[3:0]
+      CANx->sTxMailBox[transmitmailbox].TDTR = (pHeader->dlc & 0x0000000FUL); //first 4 bit LSB of TDTR --> DLC[3:0]
 
       /* Set up the Transmit Global Time mode */
       if (pHeader->transmit_global_time == 1)
       {
-        SET_BIT(CAN1->sTxMailBox[transmitmailbox].TDTR, CAN_TDT0R_TGT); //set TGT bit
+        SET_BIT(CANx->sTxMailBox[transmitmailbox].TDTR, CAN_TDT0R_TGT); //set TGT bit
       }
 
       //TIME[31:16] not set
@@ -268,11 +309,11 @@ uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint
       //(x:mailbox_number) CAN_TDHxR -- holds data bytes [byte7][byte6][byte5][byte4] as one u32 High Register
       U32RegAccessBytes_t DataMapU32Bytes;// a union typedef mapping two u32 L and H registers to 8byte_array
       for(int i=0; i<pHeader->dlc; i++){ DataMapU32Bytes.bytes[i] = aData[i]; }
-      CAN1->sTxMailBox[transmitmailbox].TDLR = DataMapU32Bytes.Reg.L32;
-      CAN1->sTxMailBox[transmitmailbox].TDHR = DataMapU32Bytes.Reg.H32;
+      CANx->sTxMailBox[transmitmailbox].TDLR = DataMapU32Bytes.Reg.L32;
+      CANx->sTxMailBox[transmitmailbox].TDHR = DataMapU32Bytes.Reg.H32;
 
       /* Request transmission */
-      SET_BIT(CAN1->sTxMailBox[transmitmailbox].TIR, CAN_TI0R_TXRQ); //setting TXRQ bit tells CAN to send the frame in the mailbox_x
+      SET_BIT(CANx->sTxMailBox[transmitmailbox].TIR, CAN_TI0R_TXRQ); //setting TXRQ bit tells CAN to send the frame in the mailbox_x
 
       /* Return function status */
       return 0;
@@ -288,14 +329,14 @@ uint8_t can_add_tx_message(can_tx_header_typedef *pHeader, uint8_t aData[], uint
   * @param  aData array where the payload of the Rx frame will be stored.
   * @retval  status
   */
-uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, uint8_t aData[])//(can_fifo_sel , can_rx_header_typedef *, uint8_t[])
+uint8_t can_get_rx_message(CAN_TypeDef *CANx, can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, uint8_t aData[])//(can_fifo_sel , can_rx_header_typedef *, uint8_t[])
 {
 
     /* Check the Rx FIFO */
     if (RxFifo == CAN_FIFO_0) /* Rx element is assigned to Rx FIFO 0 */
     {
       /* Check that the Rx FIFO 0 is not empty */
-      if ((CAN1->RF0R & CAN_RF0R_FMP0) == 0U)
+      if ((CANx->RF0R & CAN_RF0R_FMP0) == 0U)
       {
         return 1;
       }
@@ -303,7 +344,7 @@ uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, 
     else /* Rx element is assigned to Rx FIFO 1 */
     {
       /* Check that the Rx FIFO 1 is not empty */
-      if ((CAN1->RF1R & CAN_RF1R_FMP1) == 0U)
+      if ((CANx->RF1R & CAN_RF1R_FMP1) == 0U)
       {
         return 1;
       }
@@ -313,19 +354,19 @@ uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, 
     // Read the header information from the FIFO mailbox
     // Extract identifier, DLC, timestamp, etc.
 
-    pHeader->ide = (CAN_RI0R_IDE & CAN1->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_IDE_Pos;
+    pHeader->ide = (CAN_RI0R_IDE & CANx->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_IDE_Pos;
     if (pHeader->ide == CAN_ID_STD)
     {
-      pHeader->id = (CAN_RI0R_STID & CAN1->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_STID_Pos;
+      pHeader->id = (CAN_RI0R_STID & CANx->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_STID_Pos;
     }
     else
     {
-      pHeader->id = (CAN_RI0R_EXID & CAN1->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_EXID_Pos;
+      pHeader->id = (CAN_RI0R_EXID & CANx->sFIFOMailBox[RxFifo].RIR) >> CAN_RI0R_EXID_Pos;
     }
-    pHeader->rtr = ((CAN_RI0R_RTR & CAN1->sFIFOMailBox[RxFifo].RIR)) >> CAN_RI0R_RTR_Pos;
-    pHeader->dlc = (CAN_RDT0R_DLC & CAN1->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_DLC_Pos;
-    pHeader->filter_match_index = (CAN_RDT0R_FMI & CAN1->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_FMI_Pos;
-    pHeader->timestamp = (CAN_RDT0R_TIME & CAN1->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_TIME_Pos;
+    pHeader->rtr = ((CAN_RI0R_RTR & CANx->sFIFOMailBox[RxFifo].RIR)) >> CAN_RI0R_RTR_Pos;
+    pHeader->dlc = (CAN_RDT0R_DLC & CANx->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_DLC_Pos;
+    pHeader->filter_match_index = (CAN_RDT0R_FMI & CANx->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_FMI_Pos;
+    pHeader->timestamp = (CAN_RDT0R_TIME & CANx->sFIFOMailBox[RxFifo].RDTR) >> CAN_RDT0R_TIME_Pos;
 
 
     //(x:fifo_number) CAN_RDLxR -- holds data bytes [byte3][byte2][byte1][byte0] as one u32 Low Register
@@ -333,8 +374,8 @@ uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, 
     // a union typedef mapping two u32 L and H registers to 8byte_array
     U32RegAccessBytes_t DataMapU32Bytes = {
     		.Reg = {
-    				.L32 = CAN1->sFIFOMailBox[RxFifo].RDLR,
-					.H32 = CAN1->sFIFOMailBox[RxFifo].RDHR
+    				.L32 = CANx->sFIFOMailBox[RxFifo].RDLR,
+					.H32 = CANx->sFIFOMailBox[RxFifo].RDHR
     				}
     		};
     for(int i=0; i<pHeader->dlc; i++){ aData[i] = DataMapU32Bytes.bytes[i]; }
@@ -353,12 +394,12 @@ uint8_t can_get_rx_message(can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, 
     if (RxFifo == CAN_FIFO_0) /* Rx element is assigned to Rx FIFO 0 */
     {
       /* Release RX FIFO 0 */
-      SET_BIT(CAN1->RF0R, CAN_RF0R_RFOM0);
+      SET_BIT(CANx->RF0R, CAN_RF0R_RFOM0);
     }
     else /* Rx element is assigned to Rx FIFO 1 */
     {
       /* Release RX FIFO 1 */
-      SET_BIT(CAN1->RF1R, CAN_RF1R_RFOM1);
+      SET_BIT(CANx->RF1R, CAN_RF1R_RFOM1);
     }
 
   return 0;// Message read successfully
@@ -692,10 +733,23 @@ static uint16_t map_id_to_16bitfilterbankreg(can_id_mask_handle_t* id_obj)
   * @param  filtermode Filterbank Registers will be treated in List or Mask mode
   * @retval  success  (0 success, 1 fail)
   */
-int can_filter_config(can_filter_config_t* filtercfg)
+int can_filter_config(CAN_TypeDef *CANx, can_filter_config_t* filtercfg)
 {
+	/*Control and management of all filter banks (0–27) are entirely the responsibility of the CAN1 (Master) unit.
+		CAN2 does not have its own dedicated filter master registers (FMR, FM1R, FS1R, etc.).
+		Therefore, in this function, you must absolutely not write to `CANx->FMR`.
+		When configuring filters, the function must always access the `CAN1->FMR` and `CAN1->sFilterRegister[...]` registers.
+
+		  !!!!!!!!!!!! so all filter config will be done by CAN1-> registers  even CAN2 is selected.!!!!!!!!!!!!!!!!!!!!!!!!!!
+	 */
+
+
 	/****invariant checking****/
 	if(filtercfg->filterbank_number > 27)
+	{return 1;}//fail due to wrong parameter
+
+	//assert if CAN2 selected but give filterbank number is out of region of CAN2
+	if((filtercfg->filterbank_number <= CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1)  && (CANx == CAN2)  )
 	{return 1;}//fail due to wrong parameter
 
 
@@ -710,32 +764,6 @@ int can_filter_config(can_filter_config_t* filtercfg)
 	 */
 	SET_BIT(CAN1->FMR,CAN_FMR_FINIT);
 
-	/*Set the slave filter to start from 20*/
-	//CAN1->FMR &=~(CAN_FMR_CAN2SB_Msk);
-	//CAN1->FMR |=(20 << CAN_FMR_CAN2SB_Pos);
-	/*
-	 The default value of the CANSB bits is 14 at reset.
-	 So the filter banks are split evenly: 14 filters are assigned to CAN1 (0-13) and 14 filters are assigned to CAN2 (14-27).
-
-	 CAN1->FMR[13:8] bits are CANSB[5:0]: CAN start bank
-		These bits are set and cleared by software. When both CAN are used, they define the start bank of each CAN interface:
-		000001 = 1 filter assigned to CAN1 and 27 assigned to CAN2
-		...
-		011011 = 27 filters assigned to CAN1 and 1 filter assigned to CAN2
-
-		example:
-		 CANSB[5:0]= 20 means that 20 filters are assigned to CAN1 and 8 filters assigned to CAN2.
-		 [CAN_F0R1,CAN_F0R2] to [CAN_F19R1,CAN_F19R2]    assigned to CAN1
-		 [CAN_F20R1,CAN_F20R2] to [CAN_F27R1,CAN_F27R2]    assigned to CAN2
-	*/
-	//if(filtercfg->num_of_filters_assigned_to_can1 < 27)
-	if(CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1 < 27)
-	{
-		//WRITE_REG_PORTION(CAN1->FMR, CAN_FMR_CAN2SB_Msk, CAN_FMR_CAN2SB_Pos, filtercfg->num_of_filters_assigned_to_can1);
-		WRITE_REG_PORTION(CAN1->FMR, CAN_FMR_CAN2SB_Msk, CAN_FMR_CAN2SB_Pos, CAN_NUM_OF_FILTERS_ASSIGNED_TO_CAN1);
-	}
-	else
-	{return 1;}//fail due to wrong param
 
 	/*************************************************Filter activation sequence*****************************************************/
 	/*Deactive filter filter_index*/

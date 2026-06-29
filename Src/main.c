@@ -1,10 +1,10 @@
 #include "stm32f4xx.h"
 #include "can_driver.h"
-#include "uart.h"
-#include "bsp.h"
-#include "fpu.h"
-#include "adc.h"
-#include "timebase.h"
+//#include "uart.h"
+//#include "bsp.h"
+//#include "fpu.h"
+//#include "adc.h"
+//#include "timebase.h"
 #include <stdint.h>
 
 #define  GPIOAEN		(1U<<0)
@@ -12,13 +12,13 @@
 #define  LED_PIN		PIN5
 
 
-uint8_t rx_data[8]={};
-uint8_t tx_data[8]={};
+uint8_t can1_rx_data[8]={};
+uint8_t can1_tx_data[8]={};
 
-uint32_t tx_mailbox[3];
+uint32_t can1_tx_mailbox[3];
 
-can_rx_header_typedef rx_header;
-can_tx_header_typedef tx_header;
+can_rx_header_typedef can1_rx_header;
+can_tx_header_typedef can1_tx_header;
 
 volatile uint8_t count;
 
@@ -27,7 +27,16 @@ void CAN1_RX0_IRQHandler(void)
 {
 	if((CAN1->RF0R & CAN_RF0R_FMP0) != 0U)
 	{
-		can_get_rx_message(CAN_FIFO_0, &rx_header, rx_data);
+		can_get_rx_message(CAN1, CAN_FIFO_0, &can1_rx_header, can1_rx_data);
+		count++;
+	}
+}
+
+void CAN1_RX1_IRQHandler(void)
+{
+	if((CAN1->RF1R & CAN_RF1R_FMP1) != 0U)//CAN receive FIFO 1 register (RF1R) ->FMP1 bits are
+	{
+		can_get_rx_message(CAN1, CAN_FIFO_1, &can1_rx_header, can1_rx_data);
 		count++;
 	}
 }
@@ -36,7 +45,16 @@ void CAN2_RX0_IRQHandler(void)
 {
 	if((CAN2->RF0R & CAN_RF0R_FMP0) != 0U)
 	{
-		can_get_rx_message(CAN2, CAN_FIFO_0, &rx_header, rx_data); // can_get_rx_message'ı da jenerik yapmalısın
+		can_get_rx_message(CAN2, CAN_FIFO_0, &can2_rx_header, can2_rx_data); // can_get_rx_message'ı da jenerik yapmalısın
+		count++;
+	}
+}
+
+void CAN2_RX1_IRQHandler(void)
+{
+	if((CAN2->RF1R & CAN_RF1R_FMP1) != 0U)//CAN receive FIFO 1 register (RF1R) ->FMP1 bits are
+	{
+		can_get_rx_message(CAN2, CAN_FIFO_1, &can2_rx_header, can2_rx_data);
 		count++;
 	}
 }
@@ -86,25 +104,25 @@ int main()
 		//printf("filter config failed!\r\n");
 		errflag=1;
 	}*/
-	can_filter_config(&filcfg);
+	can_filter_config(CAN1, &filcfg);
 	can_start(CAN1, CAN_FIFO_0);// Eger sadece belirli bir FIFO kesmesini acacaksan: can_fifo_interrupt_enable(CAN_FIFO_0); seklinde func yaz
 
 
 	while(1)
 	{
 
-		tx_header.id =  0x244;
-		tx_header.ide = CAN_ID_STD;
-		tx_header.rtr =  CAN_FRAME_TYPE_DATA;
-		tx_header.transmit_global_time = 0;
-		tx_header.dlc = 3;//num of bytes to be written in data section of tx can frame   aka data len [bytes]
-		tx_data[0] = count;
-		tx_data[1] = count;
-		tx_data[2] = count;
-		tx_data[3] = count;
-		tx_data[4] = count;
+		can1_tx_header.id =  0x244;
+		can1_tx_header.ide = CAN_ID_STD;
+		can1_tx_header.rtr =  CAN_FRAME_TYPE_DATA;
+		can1_tx_header.transmit_global_time = 0;
+		can1_tx_header.dlc = 3;//num of bytes to be written in data section of tx can frame   aka data len [bytes]
+		can1_tx_data[0] = count;
+		can1_tx_data[1] = count;
+		can1_tx_data[2] = count;
+		can1_tx_data[3] = count;
+		can1_tx_data[4] = count;
 
-		can_add_tx_message(&tx_header, &tx_data[0],tx_mailbox);
+		can_add_tx_message(CAN1, &can1_tx_header, &can1_tx_data[0],can1_tx_mailbox);
 
 		//some delay (approx 1 sec  @ HSI 16MHz)
 		for(volatile int i=0; i<1000000; i++){}

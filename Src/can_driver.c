@@ -23,12 +23,30 @@
 // function for designating GPIO pins for CAN BUS
 void can_gpio_init(CAN_TypeDef *CANx)
 {
+	/*Set PB8 and PB9 to alternate function mode*/
+	/*
+	 Bits 2y:2y+1 MODERy[1:0]: Port x configuration bits (y = 0..15)
+		These bits are written by software to configure the I/O direction mode.
+		00: Input (reset state)
+		01: General purpose output mode
+		10: Alternate function mode
+		11: Analog mode
+
+		so PB8-> bit16:17 -> 0b10: Alternate function mode
+		   PB9-> bit18:19 -> 0b10: Alternate function mode
+	 */
+	//GPIOB->MODER &=~BIT_MASK(16); //clear MODER_BIT16
+	//GPIOB->MODER |=BIT_MASK(17); //set MODER_BIT17
+	//GPIO_MODER_MODER8_Pos --> MODER8 bits Position in GPIO_MODER Register
+	//GPIO_MODER_MODER8_Msk --> A value that corresponding MODER8 bits are 1 and remained are 0  in GPIO_MODER Register
+	//GPIO_MODER_MODESEL_ALTFUNC---> Value to select the GPIO as ALTFUNCTION
+
     if(CANx == CAN1)
     {
-        /* Enable GPIO Clock (Örn: GPIOB) */
+        /* Enable GPIO Clock (GPIOB) */
         SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN);
 
-        /* CAN1 Pins Configuration (Örn: PB8 -> RX, PB9 -> TX) */
+        /* CAN1 Pins Configuration ( PB8 -> RX, PB9 -> TX) */
         // Moder ayarları (Alternate Function - 0x2)
         WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER8_Msk, GPIO_MODER_MODER8_Pos, GPIO_MODER_MODESEL_ALTFUNC);
         WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER9_Msk, GPIO_MODER_MODER9_Pos, GPIO_MODER_MODESEL_ALTFUNC);
@@ -39,10 +57,10 @@ void can_gpio_init(CAN_TypeDef *CANx)
     }
     else if(CANx == CAN2)
     {
-        /* Enable GPIO Clock (Örn: CAN2 genelde PB5/PB6 veya PB12/PB13 kullanır) */
+        /* Enable GPIO Clock ( CAN2 uses PB5/PB6 or PB12/PB13 ) */
         SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN);
 
-        /* CAN2 Pins Configuration (Örn: PB12 -> RX, PB13 -> TX) */
+        /* CAN2 Pins Configuration (PB12 -> RX, PB13 -> TX) */
         WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER12_Msk, GPIO_MODER_MODER12_Pos, GPIO_MODER_MODESEL_ALTFUNC);
         WRITE_REG_PORTION(GPIOB->MODER, GPIO_MODER_MODER13_Msk, GPIO_MODER_MODER13_Pos, GPIO_MODER_MODESEL_ALTFUNC);
 
@@ -286,9 +304,9 @@ uint8_t can_add_tx_message(CAN_TypeDef *CANx, can_tx_header_typedef *pHeader, ui
       //TXRQ_BIT leaved 0 because it must be set at the end (after putting DLC, data bytes and TGT bit) .
 
       if (pHeader->ide == CAN_ID_EXT)
-      { tmpreg |= ((pHeader->id & 0x3FFFFUL)<< CAN_TI0R_EXID_Pos); }//put extd_id
+      { tmpreg |= ((pHeader->id & CAN_EXTID_MASK)<< CAN_TI0R_EXID_Pos); }//put extd_id
       else //CAN_ID_STD
-      { tmpreg |= ((pHeader->id & 0x7FFUL) << CAN_TI0R_STID_Pos); }//put std_id
+      { tmpreg |= ((pHeader->id & CAN_STDID_MASK) << CAN_TI0R_STID_Pos); }//put std_id
 
       CANx->sTxMailBox[transmitmailbox].TIR = tmpreg; //put tmp register to real Transmit register
 
@@ -297,18 +315,35 @@ uint8_t can_add_tx_message(CAN_TypeDef *CANx, can_tx_header_typedef *pHeader, ui
       /* Set up the DLC */
       CANx->sTxMailBox[transmitmailbox].TDTR = (pHeader->dlc & 0x0000000FUL); //first 4 bit LSB of TDTR --> DLC[3:0]
 
+      /*CAN_TDTxR
+      Bits 31:16 TIME[15:0]: Message time stamp
+      	  This field contains the 16-bit timer value captured at the SOF transmission.
+      Bits 15:9 Reserved, must be kept at reset value.
+      Bit 8 TGT: Transmit global time
+      	  This bit is active only when the hardware is in the Time Trigger Communication mode,
+      	  TTCM bit of the CAN_MCR register is set.
+      	  0: Time stamp TIME[15:0] is not sent.
+      	  1: Time stamp TIME[15:0] value is sent in the last two data bytes of the 8-byte message:
+      	  TIME[7:0] in data byte 7 and TIME[15:8] in data byte 6, replacing the data written in
+      	  CAN_TDHxR[31:16] register (DATA6[7:0] and DATA7[7:0]). DLC must be programmed as 8
+      	  in order these two bytes to be sent over the CAN bus.
+      Bits 7:4 Reserved, must be kept at reset value.
+      Bits 3:0 DLC[3:0]: Data length code
+      	  This field defines the number of data bytes a data frame contains or a remote frame request.
+      	  A message can contain from 0 to 8 data bytes, depending on the value in the DLC field.*/
+
       /* Set up the Transmit Global Time mode */
       if (pHeader->transmit_global_time == 1)
       {
         SET_BIT(CANx->sTxMailBox[transmitmailbox].TDTR, CAN_TDT0R_TGT); //set TGT bit
       }
 
-      //TIME[31:16] not set
+      //TIME[31:16] not set --for future
 
       /* Set up the data field*/
       //(x:mailbox_number) CAN_TDLxR -- holds data bytes [byte3][byte2][byte1][byte0] as one u32 Low Register
       //(x:mailbox_number) CAN_TDHxR -- holds data bytes [byte7][byte6][byte5][byte4] as one u32 High Register
-      U32RegAccessBytes_t DataMapU32Bytes;// a union typedef mapping two u32 L and H registers to 8byte_array
+      U32RegAccessBytes_t DataMapU32Bytes = {0};// a union typedef mapping two u32 L and H registers to 8byte_array
       for(int i=0; i<pHeader->dlc; i++){ DataMapU32Bytes.bytes[i] = aData[i]; }
       CANx->sTxMailBox[transmitmailbox].TDLR = DataMapU32Bytes.Reg.L32;
       CANx->sTxMailBox[transmitmailbox].TDHR = DataMapU32Bytes.Reg.H32;
@@ -680,7 +715,7 @@ static uint16_t map_id_to_16bitfilterbankreg(can_id_mask_handle_t* id_obj)
 
 	if(CAN_ID_STD == id_obj->id_style)
 	{
-		reg_tmp|= ((id_obj->id & 0x000007FFUL) << 5) ;  //id
+		reg_tmp|= ((id_obj->id & CAN_STDID_MASK) << 5) ;  //id
 		//std_id --> exid[17:15] = 0
 
 		return (uint16_t)reg_tmp;
@@ -1045,7 +1080,7 @@ bool can_get_standard_timing(uint32_t pclk1_hz, can_baudrate_t baudrate, can_bit
 	// NominalBitTime = ((BRP+1)*(1 + (TS1+1) + (TS2+1)))
 	// Baudrate = pclk1_hz / NominalBitTime
 
-    timing->SJW = 1; // 1 TQ enough for many std networks.
+    timing->SJW = 0; // 1 TQ enough for many std networks.
 
     switch (pclk1_hz) {
 

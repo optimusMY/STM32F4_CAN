@@ -130,9 +130,26 @@ typedef enum
 	CAN_FILTER_SCALING_SINGLE32BIT = 1
 }can_filter_scaling_sel;
 
+typedef enum
+{
+	CAN_RTR_DATA_FRAME = 0x00,
+	CAN_RTR_REQUEST_FRAME = 0x01,
+}can_rtr_sel;
+
+typedef enum
+{
+	CAN_IDE_STDID = 0x00,
+	CAN_IDE_EXTID = 0x01,
+}can_ide_sel;
+
+#define CAN_IDE_MASK	0x01U
+#define CAN_RTR_MASK	0x01U
+#define CAN_STDID_MASK	0x7FFUL
+#define CAN_EXTID_MASK	0x3FFFFUL
 
 // U32RegAccessBytes definition is used to map U32 registers(RegH and RegL) to 8bytes long data[] array
-typedef union {
+typedef union
+{
     struct {
         uint32_t L32; // Takes bytes 0-3
         uint32_t H32; // Takes bytes 4-7
@@ -144,6 +161,7 @@ typedef union {
 
 typedef struct
 {
+
 	uint32_t id; //it can hold a standard_id or an extended_id
 	uint32_t ide; // it holds  ide bit  that specifies id style (1: ext_id , 0: std_id)
 	uint32_t rtr; // it holds rtr bit  that specifies frame type (1:request frame, 0:data frame)
@@ -154,6 +172,7 @@ typedef struct
 
 typedef struct
 {
+
 	uint32_t id;   //Specifies the standard identifier or extended identifier
   //uint32_t std_id;
 						/*!< Specifies the standard identifier.
@@ -184,14 +203,17 @@ typedef struct
 
 
 
-typedef struct {
+typedef struct
+{
 	uint32_t id;
-	uint32_t ide; 	//1:extd_id  or 0: std_id      		   (if this obj is a mask then ide must be 1)
-	uint32_t rtr;	//1:request frame or 0:data frame      (if this obj is a mask then rtr must be 1)
+	uint32_t ide; 	//1:extd_id  or 0: std_id      		   (if this obj is used as a mask then ide must be 1)
+	uint32_t rtr;	//1:request frame or 0:data frame      (if this obj is used as a  mask then rtr must be 1)
 	can_id_style_sel id_style; // in mask mode, ide bit must be 1 for ide bit mask even if we use std_id , so this id_style specifies we use std_id or ext_id
 }can_id_mask_handle_t;
 
-typedef struct {
+
+typedef struct
+{
 	uint32_t				filterbank_number;
 	can_filter_scaling_sel 	filterbank_scaling; //can_filter_scaling_sel
 	can_filter_mode_sel		filterbank_mask_or_list_mode;//can_filter_mode_sel
@@ -200,7 +222,8 @@ typedef struct {
 }can_filter_config_t;
 
 
-typedef struct {
+typedef struct
+{
     uint32_t BRP;   //10bit:  0 to 1023
     uint32_t TS1;   //4bit:   0 to 15
     uint32_t TS2;   //3bit:   0 to 7
@@ -214,9 +237,9 @@ typedef struct {
 
 
 void can_gpio_init(CAN_TypeDef *CANx);
-void can_params_init(CAN_TypeDef *CANx, can_trans_mode_sel mode, uint16_t baudrate);//(can_trans_mode_sel, can_baudrate_t)
+void can_params_init(CAN_TypeDef *CANx, can_trans_mode_sel mode, uint16_t baudrate);
 bool can_get_standard_timing(uint32_t pclk1_hz, can_baudrate_t baudrate, can_bit_timing_t *timing);
-void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo); //(can_fifo_sel)
+void can_start(CAN_TypeDef *CANx, can_fifo_sel selected_fifo);
 uint8_t can_add_tx_message(CAN_TypeDef *CANx, can_tx_header_typedef *pHeader, uint8_t aData[], uint32_t *pTxMailbox);
 uint8_t can_get_rx_message(CAN_TypeDef *CANx, can_fifo_sel RxFifo, can_rx_header_typedef *pHeader, uint8_t aData[]);
 int can_filter_config(CAN_TypeDef *CANx, can_filter_config_t* filtercfg);

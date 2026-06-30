@@ -19,4 +19,13 @@ ${ProjDirPath}\chip_headers\CMSIS\Device\ST\STM32F4xx\Include
 #STM32F446RETx
 
 
+CAN_read folder contains a CAN read example of arduino 
+uno + mcp2515 module is used, 
+120 ohm termination resistor is activated using dedicated jumper on the module.
+
+Arduino is used to see received can packets that is transmitted from STM32F446RE  on the serial port terminal (115200bps 8N1 uart settings)
+
+
+
+
 

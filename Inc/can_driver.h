@@ -1,6 +1,6 @@
 #ifndef CAN_DRIVER_H_
 #define CAN_DRIVER_H_
-
+#include "main.h"
 #include "stm32f4xx.h"
 #include "stm32f446xx.h"
 #include <stdint.h>
@@ -147,16 +147,7 @@ typedef enum
 #define CAN_STDID_MASK	0x7FFUL
 #define CAN_EXTID_MASK	0x3FFFFUL
 
-// U32RegAccessBytes definition is used to map U32 registers(RegH and RegL) to 8bytes long data[] array
-typedef union
-{
-    struct {
-        uint32_t L32; // Takes bytes 0-3
-        uint32_t H32; // Takes bytes 4-7
-    }Reg;
-    uint8_t bytes[8];      // Overlaps bytes 0-7
-    uint16_t words[4];		// Overlaps
-}U32RegAccessBytes_t;
+
 
 
 typedef struct

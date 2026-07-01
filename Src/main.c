@@ -1,7 +1,13 @@
 #include "stm32f4xx.h"
+#include "main.h"
+#include "uart.h"
 #include "can_driver.h"
-#include <stdint.h>
 
+
+#define RX_DATA_STD_ID  0x244
+
+uint8_t count = 0;
+uint8_t message_buff[20];
 
 uint8_t can1_rx_data[8]={};
 uint8_t can1_tx_data[8]={};
@@ -10,21 +16,24 @@ can_rx_header_typedef can1_rx_header;
 can_tx_header_typedef can1_tx_header;
 volatile uint8_t count1=1;
 
-/*
-uint8_t can2_rx_data[8]={};
-uint8_t can2_tx_data[8]={};
-uint32_t can2_tx_mailbox[3];
-can_rx_header_typedef can2_rx_header;
-can_tx_header_typedef can2_tx_header;
-volatile uint8_t count2;
-*/
-
-
 void CAN1_RX0_IRQHandler(void)
 {
 	if((CAN1->RF0R & CAN_RF0R_FMP0) != 0U)
 	{
 		can_get_rx_message(CAN1, CAN_FIFO_0, &can1_rx_header, can1_rx_data);
+		//sprintf((char *)message_buff, "New Data : %d",rx_data);
+		//printf("%s\n\r",message_buff);
+
+		//print id
+		U32RegAccessBytes_t tmp ={.Reg={.L32=can1_rx_header.id,.H32=0}};
+		for(volatile int i=0; i<4; i++){ printf("%02x", tmp.bytes[3-i]); }
+		//print dlc
+		printf("   %lu   ", can1_rx_header.dlc);
+		//print data[i]
+		for(volatile int i=0; i<can1_rx_header.dlc; i++)
+		{ printf("%02x  ", can1_rx_data[i]);}
+		//seperate next msg by newline
+		printf("\r\n\r\n");
 		count1++;
 	}
 }
@@ -44,6 +53,13 @@ void CAN1_RX1_IRQHandler(void)
 
 
 /*
+uint8_t can2_rx_data[8]={};
+uint8_t can2_tx_data[8]={};
+uint32_t can2_tx_mailbox[3];
+can_rx_header_typedef can2_rx_header;
+can_tx_header_typedef can2_tx_header;
+volatile uint8_t count2;
+
 void CAN2_RX0_IRQHandler(void)
 {
 	if((CAN2->RF0R & CAN_RF0R_FMP0) != 0U)
@@ -68,6 +84,11 @@ void CAN2_RX1_IRQHandler(void)
 int main()
 {
 
+	//init usart2 for debug using printf
+	usart2_init(DBG_UART_BAUDRATE);
+
+
+	//create a filter to receive only frames of specified id
 	can_filter_config_t filcfg ={
 			.filterbank_fifo = CAN_FIFO_0,
 			.filterbank_mask_or_list_mode = CAN_FILTER_MODE_MASK,
@@ -75,7 +96,7 @@ int main()
 			.filterbank_number = 10, //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!IMPORTANT RIGHT REGION FOR CAN1!!!!!!!!!!!!!!!!!!
 			.id_mask_arr={
 					[0] = {//id
-							.id = 0x244,	/*!!!!!!!! ACCEPT FRAME FROM THIS ID !!!!!!!!*/
+							.id = RX_DATA_STD_ID,	/*!!!!!!!! ACCEPT FRAME FROM THIS ID !!!!!!!!*/
 							.ide = CAN_IDE_STDID,
 							.rtr= CAN_RTR_DATA_FRAME,
 							.id_style = CAN_ID_STD
@@ -95,23 +116,31 @@ int main()
 
 	can_params_init(CAN1, CAN_TRANS_MODE_NORMAL, CAN_BAUD_125K);
 
-	/*//debug using errflag, live expressions
-	int errflag;
-	if(0 == can_filter_config(&filcfg))
+
+	//int errflag;//debug using errflag, live expressions
+	if(0 == can_filter_config(CAN1, &filcfg))
 	{
-		//printf("filter config successful!\r\n");
-		errflag=0;
+		printf("CAN1 filter config successful!\r\n");
+		//errflag=0;
 	}
 	else
 	{
-		//printf("filter config failed!\r\n");
-		errflag=1;
-	}*/
-	can_filter_config(CAN1, &filcfg);
-	can_start(CAN1, CAN_FIFO_0);// Eger sadece belirli bir FIFO kesmesini acacaksan: can_fifo_interrupt_enable(CAN_FIFO_0); seklinde func yaz
+		printf("CAN1 filter config failed!\r\n");
+		//errflag=1;
+	}
+
+	//can_filter_config(CAN1, &filcfg);
+	can_start(CAN1, CAN_FIFO_0);
+
+	printf("CAN1 init: RX, Normal Mode, 125kbps...\r\n");
+	printf("------- CAN Read (0x244 ID Frames Accepted)----------\r\n");
+	printf("ID   DLC   DATA\r\n");
 
 	while(1)
 	{
+
+
+		/*
 		count1++;
 		can1_tx_header.id =  0x244; // ID of This Device
 		can1_tx_header.ide = CAN_ID_STD;
@@ -125,9 +154,12 @@ int main()
 		can1_tx_data[4] = count1;
 
 		can_add_tx_message(CAN1, &can1_tx_header, &can1_tx_data[0], can1_tx_mailbox);
+		 */
 
-		//some delay (approx 2 sec  @ HSI 16MHz)
-		for(volatile int i=0; i<1000000; i++){}
+		//some delay (approx 10 sec  @ HSI 16MHz)
+		for(volatile int i=0; i<10000000; i++){}
+		printf("ID   DLC   DATA\r\n");
 
 	}
+
 }
